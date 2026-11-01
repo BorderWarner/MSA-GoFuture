@@ -1,0 +1,34 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 45
+skinparam ranksep 65
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#A51D1D", $lineColor="#C62828")
+title Task1 — C2: Вход и обратная совместимость
+Container(web_passenger, "Пассажирское приложение", "iOS / Android / Huawei", "Заказ и оплата")
+Container(iam, "IAM", "Keycloak", "OIDC, роли и tenant", $tags="added")
+Container(gateway, "API Gateway", "HTTPS / REST", "Версия API и владелец маршрута", $tags="added")
+Container(compat, "Фасад совместимости", "Python", "Старые DTO; execution_owner", $tags="added")
+Container(booking, "Booking", "Python / Django", "Поездка и Saga", $tags="added")
+Container(aws_lb, "Исходный AWS ALB", "AWS", "Legacy API")
+Container(app_monolith, "GoFuture Monolith", "Django / EC2", "Оставшиеся домены и когорты")
+Rel(web_passenger, iam, "Вход / токен", "OIDC + PKCE", $tags="added")
+Rel(web_passenger, gateway, "API", "HTTPS", $tags="added")
+Rel_R(gateway, iam, "Ключи проверки JWT", "JWKS / HTTPS", $tags="added")
+Rel(gateway, compat, "Старый контракт", "REST", $tags="added")
+Rel(gateway, booking, "Поездки", "REST", $tags="added")
+Rel(compat, booking, "Новый владелец", "REST", $tags="added")
+Rel(compat, aws_lb, "Legacy-владелец", "HTTPS", $tags="added")
+Rel(aws_lb, app_monolith, "Legacy API", "HTTP")
+legend bottom
+  Красный — добавления текущего этапа
+  Синий / серый — существующие участники
+  Подпись стрелки задаёт вызов, чтение или передачу
+endlegend
+show legend
+@enduml

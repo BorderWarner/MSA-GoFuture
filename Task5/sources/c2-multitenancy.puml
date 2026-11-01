@@ -1,0 +1,73 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 60
+skinparam ranksep 85
+skinparam wrapWidth 180
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddBoundaryTag("added", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#8B1A1A", $lineColor="#C62828")
+title GoFuture — C2: подключение партнёра и изоляция данных
+Person(partner_admin, "Представитель партнёра", "Заявка, затем управление своим tenant", $tags="added")
+Person(operator, "Оператор / DPO / SRE", "Проверка заявки и согласования", $tags="added")
+System_Ext(partner_idp, "IdP партнёра", "Корпоративный SSO", $tags="added")
+Container(regional_lb, "Региональный HTTPS LB", "Google Cloud / WAF", "Вход в разрешённом регионе")
+Boundary(control, "Общий контур управления: только метаданные партнёров", $tags="added") {
+ Container(platform_iam, "Platform IAM", "Keycloak", "Заявитель и сотрудники платформы", $tags="added")
+ Container(onboarding, "Onboarding Service", "Python / Django", "Заявка, ресурсы, проверки, активация", $tags="added")
+ ContainerDb(tenant_catalog, "Каталог и workflow", "PostgreSQL", "Tenant, политика, статус, outbox", $tags="added")
+ ContainerQueue(control_topics, "Control topics", "Kafka", "Команды, конфигурация, ACK", $tags="added")
+}
+Boundary(tenant, "Контур одного партнёра — повторяется для каждого tenant", $tags="added") {
+ Container(iam, "IAM партнёра", "Keycloak / config agent", "Отдельные deployment и БД", $tags="added")
+ Container(gateway, "API Gateway", "HTTPS / REST", "Tenant, JWT, ACTIVE и версия config", $tags="added")
+ Container(booking, "Booking", "Python / Django", "Пример одного из восьми доменов")
+ ContainerDb(booking_db, "Booking DB", "PostgreSQL", "Отдельная БД и роль tenant × домен")
+ Container(cdc, "CDC", "Debezium / Kafka Connect", "Публикация транзакционных outbox")
+ ContainerQueue(kafka, "Доменные события", "Kafka", "Топики, ACL и квоты tenant")
+}
+Boundary(observability, "Региональная наблюдаемость") {
+ Container(grafana, "Grafana партнёра", "Dashboards", "Отдельный экземпляр; вход через tenant IAM", $tags="added")
+ Container(query_gateway, "Query gateway", "Python", "Проверка роли и принудительный tenant scope", $tags="added")
+ Container(monitoring, "Prometheus", "Metrics", "SLI каждого tenant и alert rules")
+ Container(alert_manager, "Alertmanager", "Alerts", "Доставка ответственным")
+}
+Rel(partner_admin, regional_lb, "Заявка / API / панели", "HTTPS", $tags="added")
+Rel(operator, regional_lb, "Согласования / статус", "HTTPS", $tags="added")
+Rel(regional_lb, platform_iam, "Вход в контур управления", "OIDC", $tags="added")
+Rel(regional_lb, onboarding, "Заявка и согласования", "HTTPS + JWT", $tags="added")
+Rel(onboarding, platform_iam, "Ключи JWT; текущие права", "JWKS; introspection", $tags="added")
+Rel(onboarding, tenant_catalog, "Состояние и outbox", "SQL", $tags="added")
+BiRel(onboarding, control_topics, "Команды через outbox; результаты / ACK", "Kafka", $tags="added")
+Rel(onboarding, iam, "Создать IAM / БД и настроить SSO", "Kubernetes / Admin API", $tags="added")
+Rel(onboarding, booking_db, "Создание БД / роли каждого домена", "SQL admin", $tags="added")
+Rel(onboarding, kafka, "Топики / ACL / квоты", "Admin API", $tags="added")
+BiRel(control_topics, gateway, "Подготовка / активация; ACK версии", "Kafka", $tags="added")
+Rel(regional_lb, gateway, "API активного tenant", "HTTPS")
+Rel(regional_lb, iam, "Вход / refresh", "OIDC / HTTPS")
+Rel(iam, partner_idp, "SSO", "OIDC / SAML", $tags="added")
+Rel(gateway, iam, "Ключи проверки JWT", "JWKS")
+Rel(gateway, booking, "Запрос с проверенным tenant", "REST")
+Rel(booking, booking_db, "Свои данные / outbox", "SQL")
+Rel(cdc, booking_db, "Читает outbox WAL", "Replication")
+Rel(cdc, kafka, "Команды и события из outbox", "Kafka")
+Rel(kafka, booking, "Ответы участников Saga", "Kafka")
+Rel(regional_lb, grafana, "Панели партнёра", "HTTPS", $tags="added")
+Rel(grafana, iam, "Вход пользователя", "OIDC", $tags="added")
+Rel(grafana, query_gateway, "Учётные данные своего tenant", "HTTPS", $tags="added")
+Rel(query_gateway, monitoring, "Ограниченный запрос", "PromQL", $tags="added")
+Rel(monitoring, booking, "SLI сервисов", "HTTP /metrics")
+Rel(monitoring, onboarding, "Этапы / ошибки", "HTTP /metrics", $tags="added")
+Rel(monitoring, query_gateway, "Ошибки / отказы доступа", "HTTP /metrics", $tags="added")
+Rel(monitoring, alert_manager, "Алерты", "HTTP API")
+Rel(alert_manager, operator, "Оповещение SRE", "Notifications")
+legend bottom
+  Красный — добавления и изменения Task5
+  Синий / серый — элементы предыдущего этапа
+endlegend
+show legend
+@enduml

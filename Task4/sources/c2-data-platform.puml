@@ -1,0 +1,107 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam nodesep 30
+skinparam ranksep 50
+skinparam wrapWidth 170
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+AddElementTag("addition", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("addition", $textColor="#8B1A1A", $lineColor="#C62828")
+title GoFuture — C2: сбор данных, ML и BI
+System_Boundary(region, "Региональный контур: SG / JKT / SAO / SCL") {
+ Boundary(domains, "Источники: восемь доменов и их собственные БД") {
+  Container(booking, "Booking", "Python / Django", "Поездка и Saga")
+  ContainerDb(booking_db, "Booking DB", "PostgreSQL", "Поездки и outbox")
+  Container(driver_service, "Driver", "Python / Django", "Позиции и резерв")
+  ContainerDb(driver_db, "Driver DB", "PostgreSQL", "Профили, резервы, outbox")
+  Container(pricing, "Pricing", "Python / Django", "Quote и тарифы")
+  ContainerDb(pricing_db, "Pricing DB", "PostgreSQL", "Тарифы, quote, outbox")
+  Container(payments, "Payments / Payouts", "Python / Django", "Ledger и выплаты")
+  ContainerDb(payments_db, "Payments DB", "PostgreSQL", "Ledger, выплаты, outbox")
+  Container(notification, "Notification", "Python", "Каналы и доставка")
+  ContainerDb(notification_db, "Notification DB", "PostgreSQL", "Каналы, попытки, outbox")
+  Container(geography, "Geography", "Python / Django", "Маршруты и кандидаты")
+  ContainerDb(geography_db, "Geography DB", "PostgreSQL", "Зоны и outbox")
+  Container(analytics, "Analytics", "Python", "Контракты данных и витрины")
+  ContainerDb(analytics_meta, "Analytics metadata", "PostgreSQL", "Контракты, lineage, outbox")
+  Container(fraud, "Fraud", "Python / Django", "Риск и расследования")
+  ContainerDb(fraud_db, "Fraud DB", "PostgreSQL", "Решения, расследования, outbox")
+ }
+ Boundary(pipeline, "Сбор и обработка") {
+  Container(cdc, "CDC", "Debezium / Kafka Connect", "Доменные outbox и миграция")
+  ContainerQueue(kafka, "Доменные события", "Kafka", "Region / tenant; RF=3, ISR=2")
+  Container(schema_registry, "Schema Registry", "Apicurio", "Версии схем событий")
+  Container(analytics_engine, "Analytics Engine", "Flink / Python", "SupplyDemand / RiskFeatures / AnalyticsIngest")
+  ContainerDb(checkpoints, "Raw / checkpoints", "Object Storage", "Региональное состояние Flink")
+  ContainerDb(quarantine, "Карантин / поздние данные", "Object Storage", "Раздельные префиксы и правила обработки", $tags="addition")
+ }
+ Boundary(ml, "Признаки и ML") {
+  ContainerDb(offline_features, "Curated / offline features", "Parquet / Object Storage", "Manifest; event_time + available_at", $tags="addition")
+  ContainerDb(online_features, "Online features", "Redis", "TTL / revision / feature_version", $tags="addition")
+  Container(training, "Обучение и оценка", "Python / scikit-learn", "Kubernetes Job; temporal split", $tags="addition")
+  Container(model_registry, "Реестр моделей", "MLflow", "Версии / метрики / promotion", $tags="addition")
+  Container(model_serving, "Online inference", "Python", "Pricing / Fraud; локальная версия", $tags="addition")
+  Container(demand_forecast, "Прогноз спроса", "Python / Kubernetes Job", "Каждые 5 мин; горизонты 15/30/60 мин", $tags="addition")
+ }
+ ContainerDb(analytics_db, "Analytics DB", "ClickHouse", "Витрины Analytics")
+ Container(bi_export, "Публикация BI", "Python / Analytics", "Сводные показатели / export policy")
+}
+Boundary(global_bi, "Yandex Cloud: только разрешённые агрегаты") {
+ ContainerDb(bi_aggregates, "Сводная BI-витрина", "ClickHouse / Yandex Cloud", "Поездки / ожидание / выручка; без персональных строк")
+ Container(datalens, "DataLens", "BI Tool", "Разрешённые отчёты")
+}
+Rel_D(booking, booking_db, "Свои данные / outbox", "SQL")
+Rel_U(cdc, booking_db, "Читает outbox WAL", "Replication")
+Rel_D(driver_service, driver_db, "Свои данные / outbox", "SQL")
+Rel_U(cdc, driver_db, "Читает outbox WAL", "Replication")
+Rel_D(pricing, pricing_db, "Свои данные / outbox", "SQL")
+Rel_U(cdc, pricing_db, "Читает outbox WAL", "Replication")
+Rel_D(payments, payments_db, "Свои данные / outbox", "SQL")
+Rel_U(cdc, payments_db, "Читает outbox WAL", "Replication")
+Rel_D(notification, notification_db, "Свои данные / outbox", "SQL")
+Rel_U(cdc, notification_db, "Читает outbox WAL", "Replication")
+Rel_D(geography, geography_db, "Свои данные / outbox", "SQL")
+Rel_U(cdc, geography_db, "Читает outbox WAL", "Replication")
+Rel_D(analytics, analytics_meta, "Свои данные / outbox", "SQL")
+Rel_U(cdc, analytics_meta, "Читает outbox WAL", "Replication")
+Rel_D(fraud, fraud_db, "Свои данные / outbox", "SQL")
+Rel_U(cdc, fraud_db, "Читает outbox WAL", "Replication")
+Rel_D(cdc, kafka, "События восьми доменов", "Kafka")
+Rel(driver_service, kafka, "Принятые позиции", "Kafka")
+Rel(analytics, analytics_engine, "Контракты / запуск jobs", "API")
+Rel_D(kafka, analytics_engine, "События всех доменов")
+Rel(cdc, schema_registry, "Проверяет схему публикации", "HTTPS")
+Rel(analytics_engine, schema_registry, "Загружает схемы входа / выхода", "HTTPS")
+Rel(analytics_engine, checkpoints, "Запись raw; чтение / запись checkpoints", "HTTPS")
+Rel(analytics_engine, quarantine, "Невалидные и поздние: раздельно", "HTTPS", $tags="addition")
+Rel(analytics_engine, quarantine, "Читает для исправления / пересчёта", "HTTPS", $tags="addition")
+Rel(analytics_engine, offline_features, "Проверенные признаки", "Parquet", $tags="addition")
+Rel(analytics_engine, online_features, "Versioned upsert", "TLS", $tags="addition")
+Rel(analytics_engine, kafka, "Спрос / risk features", "Kafka transactions")
+Rel(training, offline_features, "Читает point-in-time snapshot", "Parquet / HTTPS", $tags="addition")
+Rel(training, model_registry, "Сохраняет модель / evaluation / digest", "MLflow API", $tags="addition")
+Rel(model_serving, model_registry, "Загружает утверждённую модель при rollout", "MLflow API", $tags="addition")
+Rel(model_serving, online_features, "Читает признаки; проверяет TTL", "Redis / TLS", $tags="addition")
+Rel(pricing, model_serving, "Запрашивает прогноз для quote", "HTTPS", $tags="addition")
+Rel(fraud, model_serving, "Запрашивает risk score", "HTTPS", $tags="addition")
+Rel(demand_forecast, model_registry, "Загружает утверждённую модель", "MLflow API", $tags="addition")
+Rel(demand_forecast, offline_features, "Читает зональные агрегаты", "Parquet / HTTPS", $tags="addition")
+Rel(demand_forecast, online_features, "Записывает версию прогноза", "Redis / TLS", $tags="addition")
+Rel(geography, online_features, "Читает прогноз по зонам", "Redis / TLS", $tags="addition")
+Rel(pricing, online_features, "Читает прогноз по зонам", "Redis / TLS", $tags="addition")
+Rel(analytics_engine, analytics_db, "Факты и витрины", "SQL")
+Rel(bi_export, analytics_db, "Читает разрешённые views", "SQL / TLS")
+Rel(bi_export, bi_aggregates, "Проверенные агрегаты", "HTTPS / TLS")
+Rel(datalens, bi_aggregates, "Разрешённые агрегаты", "SQL / TLS")
+Rel(analytics, analytics_db, "Читает views своего tenant", "SQL read-only", $tags="addition")
+legend bottom
+  Синий — элементы предыдущего этапа; красный — добавления и изменения Task4.
+  Стрелка чтения направлена от читателя к хранилищу; подпись задаёт операцию.
+  Позиции Driver идут прямо в Kafka; транзакционные события — через свои outbox и CDC.
+  Производные топики Analytics отделены от входов вычисляющих их jobs.
+  Защита, наблюдаемость, CI/CD и хранилища MLflow раскрыты в c2-data-platform-full.
+endlegend
+@enduml

@@ -1,0 +1,33 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 45
+skinparam ranksep 65
+AddElementTag("addition", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("addition", $textColor="#8B1A1A", $lineColor="#C62828")
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#A51D1D", $lineColor="#C62828")
+AddRelTag("policy", $textColor="#666666", $lineColor="#666666", $lineStyle=DashedLine())
+title GoFuture — C2: Обучение и реестр моделей
+Container(jenkins, "Jenkins", "CI/CD Server", "Независимые pipeline")
+Container(training, "Обучение и оценка", "Python / scikit-learn", "Kubernetes Job; temporal split", $tags="addition")
+ContainerDb(offline_features, "Curated / offline features", "Parquet / Object Storage", "Manifest; event_time + available_at", $tags="addition")
+Container(model_registry, "Реестр моделей", "MLflow", "Версии / метрики / promotion", $tags="addition")
+ContainerDb(model_metadata, "Метаданные MLflow", "PostgreSQL", "Эксперименты и версии", $tags="addition")
+ContainerDb(model_artifacts, "Артефакты моделей", "Object Storage", "Региональный bucket tenant", $tags="addition")
+Rel(jenkins, training, "Расписание / запуск", "Kubernetes API", $tags="addition")
+Rel(training, offline_features, "Читает point-in-time snapshot", "Parquet / HTTPS", $tags="addition")
+Rel(training, model_registry, "Сохраняет модель / evaluation / digest", "MLflow API", $tags="addition")
+Rel(model_registry, model_metadata, "Читает / пишет metadata", "SQL", $tags="addition")
+Rel(model_registry, model_artifacts, "Читает / пишет артефакты", "HTTPS", $tags="addition")
+legend bottom
+  Красный — добавления и изменения Task4
+  Синий / серый — элементы предыдущего этапа
+  Подпись стрелки задаёт вызов, чтение или передачу
+endlegend
+show legend
+@enduml

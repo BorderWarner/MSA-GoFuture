@@ -1,0 +1,43 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 45
+skinparam ranksep 65
+AddElementTag("onboarding", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddBoundaryTag("onboarding", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("onboarding", $textColor="#8B1A1A", $lineColor="#C62828")
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddBoundaryTag("added", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#A51D1D", $lineColor="#C62828")
+AddRelTag("policy", $textColor="#666666", $lineColor="#666666", $lineStyle=DashedLine())
+title Task5 — C2: Заявка и активация партнёра
+Person(partner_admin, "Представитель партнёра", "Заявка; после активации — управление tenant", $tags="added")
+Container(regional_lb, "Региональный HTTPS LB", "Google Cloud", "Вход своего региона")
+Container(platform_iam, "Platform IAM", "Keycloak", "Заявки и роли оператора", $tags="onboarding")
+Container(onboarding, "Onboarding Service", "Python / Django", "Workflow / approvals / adapters", $tags="onboarding")
+ContainerDb(tenant_catalog, "Каталог и workflow", "PostgreSQL", "Tenant / policy / config / outbox", $tags="onboarding")
+ContainerQueue(control_topics, "Control topics", "Kafka", "Шаги / TenantActivated", $tags="onboarding")
+Container(gateway, "API Gateway", "HTTPS / REST", "Проверка issuer / tenant / ACTIVE / config", $tags="added")
+Container(booking, "Booking", "Python / Django", "Поездка и Saga")
+Rel(partner_admin, regional_lb, "Портал / вход / свои панели", "HTTPS", $tags="onboarding")
+Rel(regional_lb, platform_iam, "Вход заявителя до создания tenant", "OIDC / HTTPS", $tags="onboarding")
+Rel(regional_lb, onboarding, "Заявка / статус / approvals / config", "HTTPS + JWT", $tags="onboarding")
+Rel(onboarding, platform_iam, "Ключи JWT; проверка текущих прав", "JWKS; introspection / HTTPS", $tags="onboarding")
+Rel(onboarding, tenant_catalog, "Шаги / approvals / outbox", "SQL", $tags="onboarding")
+Rel(onboarding, control_topics, "Устойчивые команды / activation", "Outbox / Kafka", $tags="onboarding")
+Rel(control_topics, onboarding, "Команды шагов / config ACK", "Kafka", $tags="onboarding")
+Rel(control_topics, gateway, "ConfigPrepared / TenantActivated", "Signed config delivery", $tags="onboarding")
+Rel(control_topics, booking, "ConfigPrepared / TenantActivated", "Signed config delivery", $tags="onboarding")
+Rel(gateway, control_topics, "ACK применённой config_version", "Kafka", $tags="onboarding")
+Rel(booking, control_topics, "ACK каждого сервиса", "Kafka", $tags="onboarding")
+legend bottom
+  Красный — добавления и изменения Task5
+  Синий / серый — элементы предыдущего этапа
+  Подпись стрелки задаёт вызов, чтение или передачу
+endlegend
+show legend
+@enduml

@@ -1,0 +1,35 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 45
+skinparam ranksep 65
+AddElementTag("addition", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("addition", $textColor="#8B1A1A", $lineColor="#C62828")
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#A51D1D", $lineColor="#C62828")
+AddRelTag("policy", $textColor="#666666", $lineColor="#666666", $lineStyle=DashedLine())
+title GoFuture — C2: Региональные отчёты и глобальный BI
+Container(gateway, "API Gateway", "HTTPS / REST", "Версия API и владелец маршрута")
+Container(analytics, "Analytics", "Python", "Контракты данных и витрины")
+Container(analytics_engine, "Analytics Engine", "Flink / Python", "SupplyDemand / RiskFeatures / AnalyticsIngest")
+ContainerDb(analytics_db, "Analytics DB", "ClickHouse", "Витрины Analytics")
+Container(bi_export, "Публикация BI", "Python / Analytics", "Сводные показатели / export policy")
+ContainerDb(bi_aggregates, "Сводная BI-витрина", "ClickHouse / Yandex Cloud", "Поездки / ожидание / выручка; без персональных строк")
+Container(datalens, "DataLens", "BI Tool", "Разрешённые отчёты")
+Rel(gateway, analytics, "Разрешённые региональные отчёты", "HTTPS", $tags="addition")
+Rel(analytics, analytics_db, "Читает views своего tenant", "SQL read-only", $tags="addition")
+Rel(analytics_engine, analytics_db, "Факты и витрины", "SQL")
+Rel(bi_export, analytics_db, "Читает разрешённые views", "SQL / TLS")
+Rel(bi_export, bi_aggregates, "Проверенные агрегаты", "HTTPS / TLS")
+Rel(datalens, bi_aggregates, "Разрешённые агрегаты", "SQL / TLS")
+legend bottom
+  Красный — добавления и изменения Task4
+  Синий / серый — элементы предыдущего этапа
+  Подпись стрелки задаёт вызов, чтение или передачу
+endlegend
+show legend
+@enduml

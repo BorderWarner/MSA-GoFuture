@@ -1,0 +1,52 @@
+@startuml
+skinparam defaultFontName DejaVu Sans
+skinparam activityBackgroundColor #FFF1F1
+skinparam activityBorderColor #C62828
+skinparam activityFontColor #202020
+skinparam ArrowColor #C62828
+title GoFuture — геомаршрутизация с учётом данных и владельца
+start
+:GeoDNS / публичный bootstrap без PII;
+:Выбрать ближайший endpoint из разрешённых tenant;
+:Региональный HTTPS LB + WAF;
+:Gateway проверяет подпись routing token,
+tenant, home_region и epoch;
+if (Существующая поездка?) then (да)
+ :Использовать owner поездки;
+else (нет)
+ :Использовать write-region tenant,
+выбранный для рынка при onboarding;
+endif
+if (Текущий endpoint соответствует owner?) then (да)
+else (нет)
+ :Вернуть разрешённый адрес;
+ :SDK повторяет запрос до отправки PII
+с тем же Idempotency-Key;
+endif
+if (Owner готов к записи?) then (да)
+ #D9E8FC:Локальный сервис проверяет tenant/роль;
+ #D9E8FC:Выполнить запрос в региональной БД;
+ stop
+else (нет)
+ :Проверить резерв: allowed_regions,
+ёмкость, LSN/lag, ключи и IAM;
+ if (Все условия соблюдены?) then (да)
+  :Блокировка записи в прежнем регионе → новый epoch
+→ promotion → readiness;
+  :Обновить DNS и подписанные endpoint;
+  :SDK повторяет запрос с тем же ключом;
+  #D9E8FC:Локальный сервис проверяет tenant/роль
+и выполняет запрос в новом write-region;
+  stop
+ else (нет)
+  :Не переносить PII в запрещённый регион;
+  :Retryable ошибка / безопасная деградация,
+локальное восстановление и инцидент;
+  stop
+ endif
+endif
+legend right
+  Синий — существующая локальная обработка
+  Красный — добавленная геомаршрутизация и переключение
+endlegend
+@enduml

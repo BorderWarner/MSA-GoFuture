@@ -1,0 +1,33 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 45
+skinparam ranksep 65
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#A51D1D", $lineColor="#C62828")
+title Task2 — C2: Логи и трассы
+Container(booking, "Booking", "Python / Django", "Поездка и Saga")
+Container(collector, "OpenTelemetry Collector", "OTLP", "Фильтрация и маршрутизация", $tags="added")
+Container(loki, "Loki", "Logs", "Структурированные логи")
+Container(tempo, "Tempo", "Traces", "Трассы Saga", $tags="added")
+Container(grafana, "Grafana", "Dashboards", "Диагностика")
+Container(monitoring, "Prometheus", "Metrics", "SLI и alert rules")
+Person(sre_engineer, "SRE инженер", "Надёжность")
+Rel(booking, collector, "Логи / трассы каждого сервиса", "OTLP", $tags="added")
+Rel(collector, loki, "Очищенные логи", "OTLP / HTTP", $tags="added")
+Rel(collector, tempo, "Трассы", "OTLP", $tags="added")
+Rel(grafana, loki, "Логи", "LogQL")
+Rel(grafana, tempo, "Диагностика Saga", "TraceQL", $tags="added")
+Rel(sre_engineer, grafana, "Диагностика")
+Rel(monitoring, collector, "Очередь / dropped signals", "HTTP /metrics", $tags="added")
+legend bottom
+  Красный — добавления и изменения Task2
+  Синий / серый — существующие участники
+  Подпись стрелки задаёт вызов, чтение или передачу
+endlegend
+show legend
+@enduml

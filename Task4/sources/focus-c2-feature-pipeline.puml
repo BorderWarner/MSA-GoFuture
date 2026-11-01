@@ -1,0 +1,38 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 45
+skinparam ranksep 65
+AddElementTag("addition", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("addition", $textColor="#8B1A1A", $lineColor="#C62828")
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#A51D1D", $lineColor="#C62828")
+AddRelTag("policy", $textColor="#666666", $lineColor="#666666", $lineStyle=DashedLine())
+title GoFuture — C2: События, карантин и признаки
+ContainerQueue(kafka, "Доменные события", "Kafka", "Region / tenant; RF=3, ISR=2")
+Container(analytics_engine, "Analytics Engine", "Flink / Python", "SupplyDemand / RiskFeatures / AnalyticsIngest")
+Container(schema_registry, "Schema Registry", "Apicurio", "Версии схем событий")
+ContainerDb(checkpoints, "Raw / checkpoints", "Object Storage", "Региональное состояние Flink")
+ContainerDb(quarantine, "Карантин / поздние данные", "Object Storage", "Раздельные префиксы и правила обработки", $tags="addition")
+ContainerDb(offline_features, "Curated / offline features", "Parquet / Object Storage", "Manifest; event_time + available_at", $tags="addition")
+ContainerDb(online_features, "Online features", "Redis", "TTL / revision / feature_version", $tags="addition")
+ContainerDb(analytics_meta, "Analytics metadata", "PostgreSQL", "Контракты, lineage, outbox")
+Rel(kafka, analytics_engine, "События всех доменов")
+Rel(analytics_engine, schema_registry, "Загружает схемы входа / выхода", "HTTPS")
+Rel(analytics_engine, checkpoints, "Запись raw; чтение / запись checkpoints", "HTTPS")
+Rel(analytics_engine, quarantine, "Невалидные и поздние: раздельно", "HTTPS", $tags="addition")
+Rel(analytics_engine, quarantine, "Читает для исправления / пересчёта", "HTTPS", $tags="addition")
+Rel(analytics_engine, offline_features, "Проверенные признаки", "Parquet", $tags="addition")
+Rel(analytics_engine, online_features, "Versioned upsert", "TLS", $tags="addition")
+Rel(analytics_engine, analytics_meta, "Записывает lineage / manifests", "SQL", $tags="addition")
+legend bottom
+  Красный — добавления и изменения Task4
+  Синий / серый — элементы предыдущего этапа
+  Подпись стрелки задаёт вызов, чтение или передачу
+endlegend
+show legend
+@enduml

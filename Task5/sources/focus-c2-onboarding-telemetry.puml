@@ -1,0 +1,43 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 45
+skinparam ranksep 65
+AddElementTag("onboarding", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddBoundaryTag("onboarding", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("onboarding", $textColor="#8B1A1A", $lineColor="#C62828")
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddBoundaryTag("added", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#A51D1D", $lineColor="#C62828")
+AddRelTag("policy", $textColor="#666666", $lineColor="#666666", $lineStyle=DashedLine())
+title Task5 — C2: Наблюдаемость onboarding и query gateway
+Container(onboarding, "Onboarding Service", "Python / Django", "Workflow / approvals / adapters", $tags="onboarding")
+Container(query_gateway, "Query gateway", "Python / scoped datasource", "Tenant filter для каждого запроса", $tags="onboarding")
+Container(collector, "OpenTelemetry Collector", "OTLP", "Фильтрация и маршрутизация")
+Container(loki, "Loki", "Logs", "Структурированные логи")
+Container(tempo, "Tempo", "Traces", "Трассы Saga")
+Container(monitoring, "Prometheus", "Metrics", "SLI и alert rules")
+Container(alert_manager, "Alertmanager", "Alerts", "Маршрутизация оповещений")
+Person(sre_engineer, "SRE инженер", "Надёжность")
+ContainerDb(audit, "Аудит и backup", "Object Storage", "Append-only; отдельные полномочия")
+Rel(onboarding, collector, "Логи / трассы шагов", "OTLP", $tags="onboarding")
+Rel(query_gateway, collector, "Логи / трассы доступа к панелям", "OTLP", $tags="onboarding")
+Rel(collector, loki, "Очищенные логи", "OTLP / HTTP")
+Rel(collector, tempo, "Трассы", "OTLP")
+Rel(monitoring, onboarding, "Возраст шагов / ошибки", "HTTP /metrics", $tags="onboarding")
+Rel(monitoring, query_gateway, "Ошибки / отказы tenant scope", "HTTP /metrics", $tags="onboarding")
+Rel(monitoring, collector, "Потери / очередь экспорта", "HTTP /metrics")
+Rel(monitoring, alert_manager, "Правила алертов")
+Rel(alert_manager, sre_engineer, "Оповещения")
+Rel(onboarding, audit, "Approvals / activation", "Audit", $tags="onboarding")
+legend bottom
+  Красный — добавления и изменения Task5
+  Синий / серый — элементы предыдущего этапа
+  Подпись стрелки задаёт вызов, чтение или передачу
+endlegend
+show legend
+@enduml

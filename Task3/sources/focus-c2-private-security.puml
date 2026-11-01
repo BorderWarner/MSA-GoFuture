@@ -1,0 +1,42 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 45
+skinparam ranksep 65
+AddElementTag("security", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("security", $textColor="#A51D1D", $lineColor="#C62828")
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#A51D1D", $lineColor="#C62828")
+AddRelTag("policy", $textColor="#A51D1D", $lineColor="#C62828", $lineStyle=DashedLine())
+AddBoundaryTag("security", $fontColor="#8B1A1A", $borderColor="#C62828")
+title Task3 — C2: Защищённые соединения к БД и Kafka
+Container(gateway, "API Gateway", "HTTPS / REST", "Версия API и владелец маршрута")
+Container(booking, "Booking", "Python / Django", "Поездка и Saga")
+Container(cdc, "CDC", "Debezium / Kafka Connect", "Доменные outbox и миграция")
+Container(network_policy, "Политики workload", "NetworkPolicy / mTLS", "Default deny и service identity", $tags="security")
+Container(secrets, "Ключи и секреты", "KMS / Secret Manager", "Региональные ключи и ротация", $tags="security")
+Boundary(firewall, "VPC firewall: private endpoints\nDefault deny; workload / port allowlist", $tags="security") {
+ ContainerDb(booking_db, "Booking DB", "PostgreSQL", "Поездки и outbox")
+ ContainerQueue(kafka, "Доменные события", "Kafka", "Region / tenant; RF=3, ISR=2")
+}
+Rel(gateway, booking, "Поездки", "REST")
+Rel(booking, booking_db, "Состояние / outbox", "SQL")
+Rel_U(cdc, booking_db, "Чтение outbox WAL", "Replication")
+Rel_U(cdc, kafka, "Outbox; отдельные migration topics", "Kafka")
+Rel(kafka, booking, "Ответы Saga")
+Rel(network_policy, gateway, "Разрешает вход только от LB", "Policy / mTLS", $tags="policy")
+Rel(network_policy, booking, "Разрешает Gateway и свои зависимости", "Policy / mTLS", $tags="policy")
+Rel(network_policy, cdc, "Разрешает WAL и публикацию", "Policy / mTLS", $tags="policy")
+Rel(booking, secrets, "Ключи; каждый сервис локально", "Workload identity", $tags="security")
+legend bottom
+  Красный — добавления текущего этапа
+  Синий / серый — существующие участники
+  Подпись стрелки задаёт вызов, чтение или передачу
+  Пунктир — применение политики
+endlegend
+show legend
+@enduml

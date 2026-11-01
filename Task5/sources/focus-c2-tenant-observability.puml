@@ -1,0 +1,40 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 45
+skinparam ranksep 65
+AddElementTag("onboarding", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddBoundaryTag("onboarding", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("onboarding", $textColor="#8B1A1A", $lineColor="#C62828")
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddBoundaryTag("added", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#A51D1D", $lineColor="#C62828")
+AddRelTag("policy", $textColor="#666666", $lineColor="#666666", $lineStyle=DashedLine())
+title Task5 — C2: Доступ партнёра к панелям
+Person(partner_admin, "Администратор партнёра", "Заявка / SSO / свои панели", $tags="added")
+Container(regional_lb, "Региональный HTTPS LB", "Google Cloud", "Вход своего региона")
+Container(grafana, "Grafana партнёра", "Dashboards", "Отдельный экземпляр; tenant IAM", $tags="added")
+Container(iam, "IAM партнёра", "Keycloak / Python config agent", "Отдельные deployment и БД; 3 реплики", $tags="added")
+Container(query_gateway, "Query gateway", "Python / scoped datasource", "Tenant filter для каждого запроса", $tags="onboarding")
+Container(monitoring, "Prometheus", "Metrics", "SLI и alert rules")
+Container(loki, "Loki", "Logs", "Структурированные логи")
+Container(tempo, "Tempo", "Traces", "Трассы Saga")
+Rel(partner_admin, regional_lb, "Портал / вход / свои панели", "HTTPS", $tags="onboarding")
+Rel(regional_lb, grafana, "Панели своего tenant", "HTTPS", $tags="onboarding")
+Rel(regional_lb, iam, "Вход / refresh через WAF", "OIDC / HTTPS")
+Rel(grafana, iam, "Вход пользователя панелей", "OIDC", $tags="onboarding")
+Rel(grafana, query_gateway, "Доверенный tenant / роль", "Scoped datasource", $tags="onboarding")
+Rel(query_gateway, monitoring, "Принудительный tenant scope", "PromQL", $tags="onboarding")
+Rel(query_gateway, loki, "Принудительный tenant scope", "LogQL", $tags="onboarding")
+Rel(query_gateway, tempo, "Принудительный tenant scope", "TraceQL", $tags="onboarding")
+legend bottom
+  Красный — добавления и изменения Task5
+  Синий / серый — элементы предыдущего этапа
+  Подпись стрелки задаёт вызов, чтение или передачу
+endlegend
+show legend
+@enduml

@@ -1,0 +1,85 @@
+@startuml
+!include <C4/C4_Deployment>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 55
+skinparam ranksep 75
+AddElementTag("change", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("change", $textColor="#A51D1D", $lineColor="#C62828")
+AddNodeTag("node_change", $fontColor="#8B1A1A", $borderColor="#C62828")
+title GoFuture — развёртывание: штатная работа и переключение региона
+Person(client, "Клиент", "Приложение / SDK; прежний Idempotency-Key")
+Person(sre_engineer, "SRE инженер", "Контроль и ручной стоп")
+Container(geo_dns, "GeoDNS / bootstrap", "Два DNS-провайдера", "FP2: устаревший адрес; кеш endpoints в SDK", $tags="change")
+Container(probes, "Внешние пробы", "Python / HTTPS", "FP1: отказ региона; 3 ошибки за 15 с", $tags="change")
+Deployment_Node(home, "Основной регион для выбранной группы tenant", "GKE / VM, три зоны") {
+ Container(controller_home, "Контроллер — home", "Python", "FP8: реплика; operation_id / CAS", $tags="change")
+ Container(authority_home, "Authority — home", "Python API / etcd member 1", "FP7: quorum 2 из 3; lease 15 с", $tags="change")
+ Container(edge_home, "Региональный вход — основной", "LB / WAF / Gateway", "FP2: вход; штатно readiness открыт", $tags="change")
+ Container(api_home, "Сервисы и IAM — основные", "Python / Keycloak", "FP3: runtime; действующая lease")
+ ContainerDb(db_home, "БД — primary и sync standby", "PostgreSQL / Patroni", "FP4: БД; watchdog блокирует запись")
+ Container(cdc_home, "CDC — основной", "Debezium", "Читает outbox после commit")
+ ContainerQueue(kafka_home, "Kafka — основной", "RF=3", "FP5: брокеры / quorum / lag")
+ Container(egress_home, "Egress — основной", "Proxy / allowlist", "Выход к PSP и банкам", $tags="change")
+}
+Deployment_Node(backup, "Разрешённый резерв для той же группы tenant", "GKE / VM, три зоны", $tags="node_change") {
+ Container(controller, "Контроллер — DR", "Python", "FP8: продолжает этапы 1–5 после CAS", $tags="change")
+ Container(authority, "Authority — DR", "Python API / etcd member 2", "FP7: quorum 2 из 3; журнал операции", $tags="change")
+ Container(edge_dr, "Региональный вход — резервный", "LB / WAF / Gateway", "Readiness закрыт до этапа 4", $tags="change")
+ Container(api_dr, "Сервисы, consumers и IAM — резерв", "Python / Flink / Keycloak", "Запуск обработки с новым epoch", $tags="change")
+ ContainerDb(db_dr, "БД — DR standby", "PostgreSQL / Patroni", "3. Promote только после подтверждённого fence", $tags="change")
+ Container(cdc_dr, "CDC — резервный", "Debezium", "После promote; прежние event_id дедуплицируются", $tags="change")
+ ContainerQueue(kafka_dr, "Kafka — резервный", "RF=3 / MirrorMaker 2", "Origin topics; безопасный replay", $tags="change")
+ Container(egress_dr, "Egress — резервный", "Proxy / allowlist", "Сверка UNKNOWN по прежнему operation_id", $tags="change")
+}
+Deployment_Node(witness_site, "Независимый разрешённый контур", "Отдельный failure domain", $tags="node_change") {
+ Container(authority_witness, "Authority — witness", "etcd member 3", "FP7: голос и метаданные; без бизнес-БД", $tags="change")
+}
+System_Ext(psp, "PSP / банк", "FP6: неизвестный результат операции")
+Rel(client, geo_dns, "0. Получает адрес основного региона", "DNS / HTTPS", $tags="change")
+Rel(client, edge_home, "0. Штатный запрос", "HTTPS", $tags="change")
+Rel(edge_home, api_home, "API / вход OIDC", "HTTPS", $tags="change")
+Rel(api_home, db_home, "Состояние / inbox / outbox", "SQL")
+Rel(cdc_home, db_home, "Читает outbox WAL", "Replication")
+Rel(cdc_home, kafka_home, "Публикует события / команды", "Kafka")
+Rel(kafka_home, api_home, "Доставка участникам Saga", "Kafka")
+Rel(api_home, egress_home, "Запросы Payments", "HTTPS", $tags="change")
+Rel(egress_home, psp, "Разрешённый provider", "HTTPS", $tags="change")
+Rel(probes, edge_home, "1. Проверка основного пути", "HTTPS", $tags="change")
+Rel(probes, controller, "1. Подтверждённый сбой", "HTTPS", $tags="change")
+Rel(sre_engineer, controller, "Остановить / разобрать отказ", "HTTPS", $tags="change")
+Rel(controller, authority, "2. Запрет продления; 3. новый epoch", "CAS / mTLS", $tags="change")
+Rel(api_home, authority_home, "Lease / epoch; нет quorum — стоп записи", "mTLS", $tags="change")
+Rel(controller, db_home, "2. Блокировать запись; подтвердить fence", "Cloud API / watchdog", $tags="change")
+Rel(db_home, db_dr, "До отказа: async WAL", "TLS", $tags="change")
+Rel(kafka_home, kafka_dr, "До отказа: разрешённые topics", "MM2 / TLS", $tags="change")
+Rel(controller, db_dr, "3. Promote после проверки lag и fence", "Patroni API", $tags="change")
+Rel(api_dr, authority, "3. Получает новый epoch / lease", "mTLS", $tags="change")
+Rel(controller, api_dr, "3–4. Восстановить обработку / проверить", "Control API", $tags="change")
+Rel(api_dr, db_dr, "После promote: состояние / inbox / outbox", "SQL", $tags="change")
+Rel(cdc_dr, db_dr, "После promote: читает outbox WAL", "Replication", $tags="change")
+Rel(cdc_dr, kafka_dr, "Новые local topics; прежний event_id", "Kafka", $tags="change")
+Rel(kafka_dr, api_dr, "Зеркало до границы; затем local topics", "Kafka", $tags="change")
+Rel(api_dr, egress_dr, "Сверка неизвестных операций", "HTTPS", $tags="change")
+Rel(egress_dr, psp, "Прежний operation_id", "HTTPS", $tags="change")
+Rel(controller, edge_dr, "4. Проверяет данные / IAM / readiness", "HTTPS", $tags="change")
+Rel(edge_dr, api_dr, "API после открытия readiness", "HTTPS", $tags="change")
+Rel(controller, geo_dns, "5. Публикует адрес готового резерва", "DNS API / signed config", $tags="change")
+Rel(client, edge_dr, "5. Повтор после переключения", "HTTPS; тот же ключ", $tags="change")
+Rel(controller_home, authority_home, "FP8: тот же журнал / CAS", "mTLS", $tags="change")
+Rel(authority_home, authority, "FP7: Raft peer", "mTLS", $tags="change")
+Rel(authority, authority_witness, "FP7: Raft peer", "mTLS", $tags="change")
+Rel(authority_home, authority_witness, "FP7: Raft peer", "mTLS", $tags="change")
+legend bottom
+  0 — штатный путь; 1–5 — порядок переключения
+  Репликация работает до отказа; запросы в резерв принимаются после этапа 4
+  Красный — добавления глобального развёртывания, не статус отказа
+  Основной и резервный — роли для одной recovery cohort
+  FP7 — quorum authority; FP8 — отказ контроллера
+  Контроллеры взаимозаменяемы; показан путь управления из DR
+endlegend
+show legend
+@enduml
