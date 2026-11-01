@@ -1,0 +1,43 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_LEFT_RIGHT()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 45
+skinparam ranksep 55
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#A51D1D", $lineColor="#C62828")
+title Task1 — C2: Домены и владельцы данных
+Container(booking, "Booking", "Python / Django", "Поездка и Saga", $tags="added")
+ContainerDb(booking_db, "Booking DB", "PostgreSQL", "Поездки и outbox", $tags="added")
+Container(driver_service, "Driver", "Python / Django", "Позиции и резерв", $tags="added")
+ContainerDb(driver_db, "Driver DB", "PostgreSQL", "Профили, резервы, outbox", $tags="added")
+Container(pricing, "Pricing", "Python / Django", "Quote и тарифы", $tags="added")
+ContainerDb(pricing_db, "Pricing DB", "PostgreSQL", "Тарифы, quote, outbox", $tags="added")
+Container(payments, "Payments / Payouts", "Python / Django", "Ledger и выплаты", $tags="added")
+ContainerDb(payments_db, "Payments DB", "PostgreSQL", "Ledger, выплаты, outbox", $tags="added")
+Container(notification, "Notification", "Python", "Каналы и доставка", $tags="added")
+ContainerDb(notification_db, "Notification DB", "PostgreSQL", "Каналы, попытки, outbox", $tags="added")
+Container(geography, "Geography", "Python / Django", "Маршруты и кандидаты", $tags="added")
+ContainerDb(geography_db, "Geography DB", "PostgreSQL", "Зоны и outbox", $tags="added")
+Container(analytics, "Analytics", "Python", "Контракты данных и витрины", $tags="added")
+ContainerDb(analytics_meta, "Analytics metadata", "PostgreSQL", "Контракты, lineage, outbox", $tags="added")
+Container(fraud, "Fraud", "Python / Django", "Риск и расследования", $tags="added")
+ContainerDb(fraud_db, "Fraud DB", "PostgreSQL", "Решения, расследования, outbox", $tags="added")
+Rel(booking, booking_db, "Состояние / outbox", "SQL", $tags="added")
+Rel(driver_service, driver_db, "Резерв / outbox", "SQL", $tags="added")
+Rel(pricing, pricing_db, "Quote / outbox", "SQL", $tags="added")
+Rel(payments, payments_db, "Ledger / outbox", "SQL", $tags="added")
+Rel(notification, notification_db, "Доставка / outbox", "SQL", $tags="added")
+Rel(geography, geography_db, "Зоны / outbox", "SQL", $tags="added")
+Rel(analytics, analytics_meta, "Контракты / outbox", "SQL", $tags="added")
+Rel(fraud, fraud_db, "Решения / outbox", "SQL", $tags="added")
+legend bottom
+  Красный — добавления текущего этапа
+  Синий / серый — существующие участники
+  Подпись стрелки задаёт вызов, чтение или передачу
+endlegend
+show legend
+@enduml

@@ -1,0 +1,31 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 45
+skinparam ranksep 65
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#A51D1D", $lineColor="#C62828")
+title Task1 — C2: Outbox и перенос данных
+ContainerDb(db_main, "Основная legacy БД", "PostgreSQL RDS", "До передачи владельцу")
+Container(cdc, "CDC", "Debezium / Kafka Connect", "Доменные outbox и миграция", $tags="added")
+ContainerQueue(kafka, "Доменные события", "Kafka", "Региональные топики", $tags="added")
+Container(migration, "Перенос данных", "Python batch / Kafka consumer", "Применение snapshot и CDC; сверка", $tags="added")
+Container(booking, "Booking", "Python / Django", "Поездка и Saga", $tags="added")
+ContainerDb(booking_db, "Booking DB", "PostgreSQL", "Поездки и outbox", $tags="added")
+Rel(booking, booking_db, "Состояние / outbox", "SQL", $tags="added")
+Rel(cdc, booking_db, "Чтение outbox WAL", "Replication", $tags="added")
+Rel(cdc, db_main, "Legacy outbox / snapshot / migration WAL", "Replication", $tags="added")
+Rel(cdc, kafka, "Outbox; отдельные migration topics", "Kafka", $tags="added")
+Rel(kafka, migration, "Snapshot / CDC старой схемы", "Kafka", $tags="added")
+Rel(migration, booking_db, "Перенос до смены владельца", "SQL / upsert", $tags="added")
+legend bottom
+  Красный — добавления текущего этапа
+  Синий / серый — существующие участники
+  Подпись стрелки задаёт вызов, чтение или передачу
+endlegend
+show legend
+@enduml
