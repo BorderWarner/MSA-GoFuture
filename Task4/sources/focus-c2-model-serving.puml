@@ -1,0 +1,39 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 45
+skinparam ranksep 65
+AddElementTag("addition", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("addition", $textColor="#8B1A1A", $lineColor="#C62828")
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#A51D1D", $lineColor="#C62828")
+AddRelTag("policy", $textColor="#666666", $lineColor="#666666", $lineStyle=DashedLine())
+title GoFuture — C2: Применение моделей
+Container(pricing, "Pricing", "Python / Django", "Quote и тарифы")
+Container(fraud, "Fraud", "Python / Django", "Риск и расследования")
+Container(geography, "Geography", "Python / Django", "Маршруты и кандидаты")
+Container(model_serving, "Online inference", "Python", "Pricing / Fraud; локальная версия", $tags="addition")
+Container(demand_forecast, "Прогноз спроса", "Python / Kubernetes Job", "Каждые 5 мин; горизонты 15/30/60 мин", $tags="addition")
+Container(model_registry, "Реестр моделей", "MLflow", "Версии / метрики / promotion", $tags="addition")
+ContainerDb(online_features, "Online features", "Redis", "TTL / revision / feature_version", $tags="addition")
+ContainerDb(offline_features, "Curated / offline features", "Parquet / Object Storage", "Manifest; event_time + available_at", $tags="addition")
+Rel(pricing, model_serving, "Запрашивает прогноз для quote", "HTTPS", $tags="addition")
+Rel(fraud, model_serving, "Запрашивает risk score", "HTTPS", $tags="addition")
+Rel(model_serving, model_registry, "Загружает утверждённую модель при rollout", "MLflow API", $tags="addition")
+Rel(model_serving, online_features, "Читает признаки; проверяет TTL", "Redis / TLS", $tags="addition")
+Rel(demand_forecast, model_registry, "Загружает утверждённую модель", "MLflow API", $tags="addition")
+Rel(demand_forecast, offline_features, "Читает зональные агрегаты", "Parquet / HTTPS", $tags="addition")
+Rel(demand_forecast, online_features, "Записывает версию прогноза", "Redis / TLS", $tags="addition")
+Rel(pricing, online_features, "Читает прогноз по зонам", "Redis / TLS", $tags="addition")
+Rel(geography, online_features, "Читает прогноз по зонам", "Redis / TLS", $tags="addition")
+legend bottom
+  Красный — добавления и изменения Task4
+  Синий / серый — элементы предыдущего этапа
+  Подпись стрелки задаёт вызов, чтение или передачу
+endlegend
+show legend
+@enduml
