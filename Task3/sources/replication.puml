@@ -1,0 +1,48 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_LEFT_RIGHT()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 45
+skinparam ranksep 65
+AddElementTag("change", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("change", $textColor="#A51D1D", $lineColor="#C62828")
+AddBoundaryTag("change", $fontColor="#8B1A1A", $borderColor="#C62828")
+title GoFuture — репликация одной recovery cohort
+System_Boundary(home, "Home: SG / JKT / SAO / SCL") {
+ ContainerDb(primary, "Primary доменных БД", "PostgreSQL", "Booking, Driver, Payments, IAM и прочие; один регион записи")
+ ContainerDb(local, "Standby другой зоны", "PostgreSQL", "Синхронный commit; RPO=0 локально", $tags="change")
+ ContainerQueue(kafka, "Kafka источника", "RF=3 / min ISR=2", "Топики tenant; исходные event_id")
+ ContainerDb(objects, "Региональные объекты", "Object Storage", "Raw, checkpoints, backup/WAL")
+ Container(cdc, "CDC outbox", "Debezium", "После восстановления повторная публикация")
+}
+Container(policy, "Политика передачи", "tenant / data class / allowed_regions", "Разрешение до репликации; аудит изменений", $tags="change")
+System_Boundary(dr, "DR: разрешённый парный регион", $tags="change") {
+ ContainerDb(remote, "DR standby", "PostgreSQL", "Async WAL; цель RPO ≤5 с", $tags="change")
+ ContainerQueue(mirror, "Kafka DR", "MirrorMaker 2", "Remote topics; граница replay", $tags="change")
+ ContainerDb(copy, "Разрешённая копия объектов", "Object Storage", "Raw/checkpoints ≤60 с; backup отдельно", $tags="change")
+ Container(recovery, "Восстановление проекций", "Flink / Python consumers", "Replay с дедупликацией и новой revision", $tags="change")
+ ContainerDb(cache, "Проекции / витрины", "Redis / Elasticsearch / ClickHouse", "Восстанавливаются; не источник истины", $tags="change")
+}
+Rel(primary, local, "Sync WAL", "TLS", $tags="change")
+Rel(primary, remote, "Async WAL кластера с единой policy", "TLS", $tags="change")
+Rel(cdc, primary, "Читает outbox WAL", "Replication")
+Rel(cdc, kafka, "Доменные факты", "Kafka")
+Rel(kafka, mirror, "Allowlist topic / tenant", "MM2 + TLS", $tags="change")
+Rel(objects, copy, "Async copy + retention", "HTTPS", $tags="change")
+Rel(policy, remote, "Разрешает destination", $tags="change")
+Rel(policy, mirror, "Разрешает topic", $tags="change")
+Rel(policy, copy, "Разрешает data class", $tags="change")
+Rel(mirror, recovery, "Safe offset / event_id", $tags="change")
+Rel(recovery, copy, "Читает совместимый checkpoint / raw", "HTTPS", $tags="change")
+Rel(recovery, cache, "Versioned upsert", $tags="change")
+legend right
+  Пары: SG → JKT; JKT → SG; SAO → SCL; SCL → SAO
+  Встречные потоки — разные cohort / allowlist, без возврата зеркал
+  Синий — существующие участники основного контура
+  Красный — добавленные механизмы резервирования
+endlegend
+show legend
+@enduml

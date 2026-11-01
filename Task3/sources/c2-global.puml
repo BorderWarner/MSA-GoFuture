@@ -1,0 +1,59 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 55
+skinparam ranksep 60
+skinparam wrapWidth 190
+AddElementTag("security", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("security", $textColor="#A51D1D", $lineColor="#C62828")
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#A51D1D", $lineColor="#C62828")
+AddRelTag("policy", $textColor="#A51D1D", $lineColor="#C62828", $lineStyle=DashedLine())
+AddBoundaryTag("security", $fontColor="#8B1A1A", $borderColor="#C62828")
+title GoFuture — C2: региональный вход и защита
+Container(web_passenger, "Пассажирское приложение", "iOS / Android / Huawei", "Заказ и оплата")
+Container(geo_dns, "GeoDNS / bootstrap", "Два DNS-провайдера", "Разрешённый ближайший endpoint", $tags="added")
+Container(waf, "WAF", "Cloud Armor", "SQLi / XSS / rate limits", $tags="security")
+System_Boundary(region, "Региональный контур: SG / JKT / SAO / SCL") {
+Container(regional_lb, "Региональный HTTPS LB", "Google Cloud", "Вход своего региона", $tags="added")
+Container(gateway, "API Gateway", "HTTPS / REST", "Версия API и владелец маршрута")
+Container(iam, "IAM", "Keycloak", "OIDC, роли и tenant")
+Container(network_policy, "Политики workload", "NetworkPolicy / mTLS", "Default deny и service identity", $tags="security")
+Container(booking, "Booking", "Python / Django", "Поездка и Saga")
+Container(payments, "Payments / Payouts", "Python / Django", "Ledger и выплаты")
+Container(secrets, "Ключи и секреты", "KMS / Secret Manager", "Региональные ключи и ротация", $tags="security")
+Container(egress, "Контроль исходящего трафика", "Egress proxy", "Allowlist PSP / карт / push", $tags="security")
+ Boundary(firewall, "VPC firewall: private endpoints", $tags="security") {
+ContainerDb(booking_db, "Booking DB", "PostgreSQL", "Поездки и outbox")
+ContainerDb(payments_db, "Payments DB", "PostgreSQL", "Ledger, выплаты, outbox")
+ }
+}
+System_Ext(yandex_pay, "Яндекс Пэй", "Платёжный шлюз")
+Rel(web_passenger, regional_lb, "API / вход OIDC", "HTTPS", $tags="added")
+Rel(gateway, iam, "Ключи проверки JWT", "JWKS / HTTPS")
+Rel(gateway, booking, "Поездки", "REST")
+Rel(gateway, payments, "Платёжный профиль", "REST")
+Rel(booking, booking_db, "Состояние / outbox", "SQL")
+Rel(payments, payments_db, "Ledger / outbox", "SQL")
+Rel(egress, yandex_pay, "Авторизация / списание", "HTTPS", $tags="security")
+Rel(web_passenger, geo_dns, "Получает разрешённый адрес; все клиенты", "DNS / HTTPS", $tags="added")
+Rel(geo_dns, regional_lb, "Проверяет доступность endpoint", "HTTPS probe", $tags="added")
+Rel(regional_lb, gateway, "Локальный API", "HTTPS", $tags="added")
+Rel(waf, regional_lb, "Применение WAF policy", "Backend policy", $tags="policy")
+Rel(network_policy, gateway, "Разрешает вход только от LB", "Policy / mTLS", $tags="policy")
+Rel(network_policy, booking, "Разрешает Gateway и свои зависимости", "Policy / mTLS", $tags="policy")
+Rel(booking, secrets, "Ключи; каждый сервис локально", "Workload identity", $tags="security")
+Rel(payments, egress, "PSP / банк", "HTTPS", $tags="security")
+Rel(regional_lb, iam, "Вход / refresh через WAF", "OIDC / HTTPS", $tags="added")
+legend bottom
+  Красный — добавления Task3; синий / серый — контур Task2
+  Пунктир — применение политики; firewall — фильтрация private endpoints
+  Показаны выбранные домены и провайдеры; полный состав — c2-global-full
+  Репликация и управление переключением — отдельные схемы Task3
+endlegend
+show legend
+@enduml
