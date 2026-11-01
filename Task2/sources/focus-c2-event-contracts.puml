@@ -1,0 +1,35 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 45
+skinparam ranksep 65
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#A51D1D", $lineColor="#C62828")
+title Task2 — C2: События, контракты и checkpoints
+Container(cdc, "CDC", "Debezium / Kafka Connect", "Доменные outbox и миграция")
+Container(driver_service, "Driver", "Python / Django", "Позиции и резерв")
+ContainerQueue(kafka, "Доменные события", "Kafka", "Region / tenant; RF=3, ISR=2", $tags="added")
+Container(analytics_engine, "Analytics Engine", "Flink / Python", "SupplyDemand / RiskFeatures / AnalyticsIngest", $tags="added")
+Container(schema_registry, "Schema Registry", "Apicurio", "Версии схем событий", $tags="added")
+ContainerDb(checkpoints, "Raw / checkpoints", "Object Storage", "Региональное состояние Flink", $tags="added")
+ContainerDb(analytics_db, "Analytics DB", "ClickHouse", "Витрины Analytics")
+Rel(cdc, kafka, "Outbox; отдельные migration topics", "Kafka")
+Rel(driver_service, kafka, "Принятые позиции", "Kafka")
+Rel(cdc, schema_registry, "Проверяет схему публикации", "HTTPS", $tags="added")
+Rel(driver_service, schema_registry, "Проверяет схему позиции", "HTTPS", $tags="added")
+Rel(kafka, analytics_engine, "События всех доменов")
+Rel(analytics_engine, schema_registry, "Загружает схемы входа / выхода", "HTTPS", $tags="added")
+Rel(analytics_engine, checkpoints, "Запись raw; чтение / запись checkpoints", "HTTPS", $tags="added")
+Rel(analytics_engine, analytics_db, "Факты и витрины", "SQL")
+Rel(analytics_engine, kafka, "Спрос / risk features", "Kafka transactions", $tags="added")
+legend bottom
+  Красный — добавления и изменения Task2
+  Синий / серый — существующие участники
+  Подпись стрелки задаёт вызов, чтение или передачу
+endlegend
+show legend
+@enduml

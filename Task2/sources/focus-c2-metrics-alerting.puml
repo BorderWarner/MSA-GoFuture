@@ -1,0 +1,46 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 45
+skinparam ranksep 65
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#A51D1D", $lineColor="#C62828")
+title Task2 — C2: Метрики и оповещения
+Container(monitoring, "Prometheus", "Metrics", "SLI и alert rules")
+Container(exporters, "Exporters", "PostgreSQL / RabbitMQ / JMX / node / kube-state", "Опрос статистики БД, Kafka и кластера", $tags="added")
+Container(kafka_exporter, "Kafka Exporter", "Kafka Admin / Consumer APIs", "Lag по committed offsets consumer groups", $tags="added")
+Container(cdc, "CDC", "Debezium / Kafka Connect", "Доменные outbox и миграция")
+Container(schema_registry, "Schema Registry", "Apicurio", "Версии схем событий", $tags="added")
+Container(collector, "OpenTelemetry Collector", "OTLP", "Фильтрация и маршрутизация", $tags="added")
+ContainerQueue(kafka, "Доменные события", "Kafka", "Region / tenant; RF=3, ISR=2", $tags="added")
+ContainerDb(booking_db, "Booking DB", "PostgreSQL", "Поездки и outbox")
+Container(booking, "Booking", "Python / Django", "Поездка и Saga")
+Container(analytics_engine, "Analytics Engine", "Flink / Python", "SupplyDemand / RiskFeatures / AnalyticsIngest", $tags="added")
+Container(alert_manager, "Alertmanager", "Alerts", "Маршрутизация оповещений")
+Person(sre_engineer, "SRE инженер", "Надёжность")
+Container(grafana, "Grafana", "Dashboards", "Диагностика")
+Rel(monitoring, exporters, "Читает /metrics", "HTTP scrape")
+Rel(exporters, kafka, "Читает MBeans brokers / controllers", "JMX read-only", $tags="added")
+Rel(exporters, booking_db, "Читает pg_stat / lag БД доменов", "SQL read-only")
+Rel(monitoring, booking, "Scrape каждого сервиса", "HTTP")
+Rel(monitoring, analytics_engine, "Lag / checkpoints", "HTTP", $tags="added")
+Rel(monitoring, alert_manager, "Алерты; опрос ошибок доставки", "HTTP API / /metrics")
+Rel(alert_manager, sre_engineer, "Оповещения")
+Rel(sre_engineer, grafana, "Диагностика")
+Rel(grafana, monitoring, "Метрики", "PromQL")
+Rel(monitoring, kafka_exporter, "Lag consumer groups", "HTTP /metrics", $tags="added")
+Rel(kafka_exporter, kafka, "Committed / end offsets", "Kafka API read-only", $tags="added")
+Rel(exporters, cdc, "Метрики connectors / CDC lag", "JMX read-only", $tags="added")
+Rel(monitoring, schema_registry, "Ошибки / доступность", "HTTP /metrics", $tags="added")
+Rel(monitoring, collector, "Очередь / dropped signals", "HTTP /metrics", $tags="added")
+legend bottom
+  Красный — добавления и изменения Task2
+  Синий / серый — существующие участники
+  Подпись стрелки задаёт вызов, чтение или передачу
+endlegend
+show legend
+@enduml

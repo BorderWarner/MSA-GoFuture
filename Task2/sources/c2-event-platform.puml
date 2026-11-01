@@ -1,0 +1,104 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 45
+skinparam ranksep 65
+skinparam wrapWidth 180
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#A51D1D", $lineColor="#C62828")
+title GoFuture — C2: региональная событийная платформа
+Person(sre_engineer, "SRE / команды доменов", "Диагностика и инциденты")
+System_Boundary(platform, "GoFuture — один регион; одинаковый контур в каждом регионе") {
+ Boundary(process, "Поездка и динамические цены") {
+  Container(booking, "Booking", "Python / Django", "Оркестратор Saga; inbox, таймеры")
+  Container(driver_service, "Driver", "Python / Django", "Приём позиций; резерв и назначение")
+  Container(fraud, "Fraud", "Python / Django", "Решения проверки")
+  Container(payments, "Payments", "Python / Django", "Авторизация, capture, void; идемпотентность")
+  Container(pricing, "Pricing", "Python / Django", "Версионированные цены и quote")
+  ContainerDb(booking_db, "Booking DB", "PostgreSQL", "Saga, inbox, outbox")
+  ContainerDb(driver_db, "Driver DB", "PostgreSQL", "Резервы, inbox, outbox")
+  ContainerDb(fraud_db, "Fraud DB", "PostgreSQL", "Решения, inbox, outbox")
+  ContainerDb(payments_db, "Payments DB", "PostgreSQL", "Ledger, intents, inbox, outbox")
+  ContainerDb(pricing_db, "Pricing DB", "PostgreSQL", "Цены, quote, inbox, outbox")
+ }
+ Boundary(events, "Доставка и потоковая обработка") {
+  Container(cdc, "CDC", "Debezium / Kafka Connect", "Публикация транзакционных outbox")
+  ContainerQueue(kafka, "Доменные события и команды", "Kafka", "gf.<region>.<tenant>.<domain>.<stream>.v1\nHash по агрегату; RF=3, min ISR=2\nretry / DLQ; acks=all", $tags="added")
+  Container(analytics_engine, "Analytics Engine", "Flink / PyFlink", "SupplyDemand / RiskFeatures / AnalyticsIngest", $tags="added")
+  Container(schema_registry, "Schema Registry", "Apicurio", "JSON Schema и совместимость", $tags="added")
+  ContainerDb(checkpoints, "Raw / checkpoints", "Object Storage", "Раздельные buckets; восстановление Flink", $tags="added")
+  ContainerDb(analytics_db, "Analytics DB", "ClickHouse", "Дедупликация и витрины")
+ }
+ Boundary(metrics, "Метрики и оповещения") {
+  Container(monitoring, "Prometheus", "Metrics", "Региональные SLI / alert rules; self-metrics")
+  Container(exporters, "Exporters", "JMX / PostgreSQL / node / kube-state", "Kafka, CDC, WAL/slot, инфраструктура", $tags="added")
+  Container(kafka_exporter, "Kafka Exporter", "Kafka Admin / Consumer APIs", "Lag consumer groups по committed offsets", $tags="added")
+  Container(alert_manager, "Alertmanager", "Alerts", "Группировка и маршрутизация")
+ }
+ Boundary(telemetry, "Логи, трассы и просмотр") {
+  Container(collector, "OpenTelemetry Collector", "OTLP", "Очистка, batching, bounded retry", $tags="added")
+  Container(loki, "Loki", "Logs", "Структурированные логи")
+  Container(tempo, "Tempo", "Traces", "Трассы Saga", $tags="added")
+  Container(grafana, "Grafana", "Dashboards", "Метрики, логи и трассы")
+ }
+}
+System_Ext(psp, "Платёжный провайдер", "Идемпотентные операции и сверка")
+Rel(booking, booking_db, "Переход + inbox + outbox", "SQL transaction")
+Rel(driver_service, driver_db, "Резерв / outbox", "SQL transaction")
+Rel(fraud, fraud_db, "Решение / outbox", "SQL transaction")
+Rel(payments, payments_db, "Intent / ledger / outbox", "SQL transaction")
+Rel(pricing, pricing_db, "Цена / quote / outbox", "SQL transaction")
+Rel(cdc, booking_db, "Outbox WAL", "Replication")
+Rel(cdc, driver_db, "Outbox WAL", "Replication")
+Rel(cdc, fraud_db, "Outbox WAL", "Replication")
+Rel(cdc, payments_db, "Outbox WAL", "Replication")
+Rel(cdc, pricing_db, "Outbox WAL", "Replication")
+Rel(cdc, kafka, "BookingCreated; команды / факты", "Kafka")
+Rel(driver_service, kafka, "DriverLocationUpdated после валидации", "Kafka; acks=all")
+Rel(kafka, booking, "Ответы шагов / компенсаций", "Kafka / booking-saga")
+Rel(kafka, fraud, "CheckFraud / RiskFeaturesUpdated", "Kafka / fraud groups")
+Rel(kafka, payments, "Authorize / Capture / Void", "Kafka / payments-commands")
+Rel(kafka, driver_service, "Reserve / Confirm / Release", "Kafka / driver-commands")
+Rel(payments, psp, "Операция / сверка по operation_id", "HTTPS")
+Rel(booking, pricing, "Проверка quote / TTL", "REST")
+Rel(kafka, analytics_engine, "Поездки / позиции / платежи", "Kafka / job groups")
+Rel(analytics_engine, kafka, "Спрос / risk features", "Kafka transactions", $tags="added")
+Rel(kafka, pricing, "ZoneSupplyDemandUpdated", "Kafka / pricing-signals")
+Rel(analytics_engine, checkpoints, "Raw; checkpoints каждые 2 с", "HTTPS", $tags="added")
+Rel(analytics_engine, analytics_db, "Факты / versioned upsert", "SQL")
+Rel(cdc, schema_registry, "Схемы публикации", "HTTPS", $tags="added")
+Rel(driver_service, schema_registry, "Схема позиции", "HTTPS", $tags="added")
+Rel(analytics_engine, schema_registry, "Схемы входа / выхода", "HTTPS", $tags="added")
+Rel(monitoring, booking, "Бизнес-метрики сервисов", "HTTP /metrics")
+Rel(monitoring, analytics_engine, "Checkpoints / watermark / backpressure", "HTTP /metrics", $tags="added")
+Rel(monitoring, exporters, "Инфраструктурные метрики", "HTTP /metrics")
+Rel(exporters, kafka, "Brokers / controllers", "JMX read-only", $tags="added")
+Rel(exporters, cdc, "Connectors / CDC lag", "JMX read-only", $tags="added")
+Rel(exporters, booking_db, "WAL / slot доменных БД", "SQL read-only")
+Rel(monitoring, kafka_exporter, "Lag consumer groups", "HTTP /metrics", $tags="added")
+Rel(kafka_exporter, kafka, "Committed / end offsets", "Kafka API read-only", $tags="added")
+Rel(monitoring, schema_registry, "Ошибки / доступность", "HTTP /metrics", $tags="added")
+Rel(monitoring, collector, "Очередь / dropped signals", "HTTP /metrics", $tags="added")
+Rel(monitoring, alert_manager, "Алерты; опрос ошибок доставки", "HTTP API / /metrics")
+Rel(alert_manager, sre_engineer, "Оповещения")
+Rel(booking, collector, "Логи / трассы сервисов", "OTLP", $tags="added")
+Rel(collector, loki, "Очищенные логи", "OTLP / HTTP", $tags="added")
+Rel(collector, tempo, "Трассы", "OTLP", $tags="added")
+Rel(grafana, monitoring, "Метрики", "PromQL")
+Rel(grafana, loki, "Логи", "LogQL")
+Rel(grafana, tempo, "Трассы", "TraceQL", $tags="added")
+Rel(sre_engineer, grafana, "Диагностика")
+legend bottom
+  Красный — добавления и изменения Task2; синий — элементы предыдущего этапа.
+  Пути метрик, логов и трасс доменных сервисов показаны через Booking;
+  путь SQL-метрик доменных БД — через Booking DB. Сбор настроен для каждого экземпляра.
+  Команды Booking и факты участников проходят через их собственные outbox и CDC.
+  Потребители: inbox + локальный эффект + outbox, затем commit offset; retry / DLQ по ADR-005.
+  Остальные домены, клиенты, миграция и CI/CD: c2-event-platform-full.
+endlegend
+show legend
+@enduml
