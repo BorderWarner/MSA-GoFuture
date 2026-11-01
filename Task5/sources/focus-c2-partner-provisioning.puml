@@ -1,0 +1,37 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 45
+skinparam ranksep 65
+AddElementTag("onboarding", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddBoundaryTag("onboarding", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("onboarding", $textColor="#8B1A1A", $lineColor="#C62828")
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddBoundaryTag("added", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#A51D1D", $lineColor="#C62828")
+AddRelTag("policy", $textColor="#666666", $lineColor="#666666", $lineStyle=DashedLine())
+title Task5 — C2: Ресурсы партнёра и SSO
+ContainerQueue(control_topics, "Control topics", "Kafka", "Шаги / TenantActivated", $tags="onboarding")
+Container(onboarding, "Onboarding Service", "Python / Django", "Workflow / approvals / adapters", $tags="onboarding")
+Container(iam, "IAM партнёра", "Keycloak / Python config agent", "Отдельные deployment и БД; 3 реплики", $tags="added")
+System_Ext(partner_idp, "Enterprise IdP партнёра", "OIDC / SAML", $tags="added")
+ContainerDb(booking_db, "Booking DB", "PostgreSQL", "Поездки и outbox")
+ContainerQueue(kafka, "Доменные события", "Kafka", "Region / tenant; RF=3, ISR=2")
+Container(secrets, "Ключи и секреты", "KMS / Secret Manager", "Региональные ключи и ротация")
+Rel(control_topics, onboarding, "Команды шагов / config ACK", "Kafka", $tags="onboarding")
+Rel(onboarding, iam, "Развернуть Keycloak / БД; настроить realm / SSO", "Kubernetes / Admin API", $tags="onboarding")
+Rel(iam, partner_idp, "Enterprise SSO", "OIDC / SAML", $tags="onboarding")
+Rel(onboarding, booking_db, "БД / роль каждого домена", "SQL admin", $tags="onboarding")
+Rel(onboarding, kafka, "Topics / ACL / quotas", "Admin API", $tags="onboarding")
+Rel(onboarding, secrets, "Credentials / ключи / allowlist DR", "Scoped API", $tags="onboarding")
+legend bottom
+  Красный — добавления и изменения Task5
+  Синий / серый — элементы предыдущего этапа
+  Подпись стрелки задаёт вызов, чтение или передачу
+endlegend
+show legend
+@enduml

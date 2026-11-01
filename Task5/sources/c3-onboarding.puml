@@ -1,0 +1,54 @@
+@startuml
+!include <C4/C4_Component>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName DejaVu Sans
+skinparam LegendFontColor #333333
+skinparam LegendBackgroundColor #FFFFFF
+skinparam LegendBorderColor #CCCCCC
+skinparam nodesep 35
+skinparam ranksep 45
+skinparam wrapWidth 180
+AddElementTag("added", $bgColor="#FFF1F1", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddBoundaryTag("added", $fontColor="#8B1A1A", $borderColor="#C62828")
+AddRelTag("added", $textColor="#8B1A1A", $lineColor="#C62828")
+title GoFuture — C3: Onboarding Service
+Person(partner_admin, "Заявитель / оператор", "Заявка, статус, согласования", $tags="added")
+Container(platform_iam, "Platform IAM", "Keycloak", "Аутентификация и права", $tags="added")
+ContainerDb(tenant_catalog, "Каталог и workflow", "PostgreSQL", "Заявки, шаги, версии, outbox", $tags="added")
+ContainerQueue(control_topics, "Control topics", "Kafka", "Команды, config и ACK", $tags="added")
+ContainerDb(booking_db, "Booking DB", "PostgreSQL", "Пример ресурса tenant")
+ContainerQueue(kafka, "Доменные события", "Kafka", "Топики / ACL tenant")
+Container(iam, "IAM партнёра", "Keycloak / config agent", "SSO / роли / ACK готовности", $tags="added")
+Container(gateway, "API Gateway", "HTTPS / REST", "Вход закрыт до ACTIVE", $tags="added")
+Container_Boundary(onboarding, "Onboarding Service — Python / Django", $tags="added") {
+ Component(api, "Application API", "Python", "JWT, права, заявка и согласования", $tags="added")
+ Component(workflow, "Workflow coordinator", "Python", "Шаги, повторы, компенсации и активация", $tags="added")
+ Component(adapters, "Resource / IAM adapters", "Python", "Создание ресурсов и настройка SSO", $tags="added")
+ Component(verify, "Validation runner", "Python", "Изоляция, SSO и готовность", $tags="added")
+ Component(relay, "Outbox relay", "Python", "Доставка сохранённых команд", $tags="added")
+}
+Rel(partner_admin, api, "Через региональный LB / WAF", "HTTPS + JWT", $tags="added")
+Rel(api, platform_iam, "Ключи JWT; текущие права", "JWKS; introspection", $tags="added")
+Rel(api, tenant_catalog, "Заявка / независимые согласования", "SQL", $tags="added")
+Rel(api, workflow, "Начать согласованную заявку", "In-process", $tags="added")
+Rel(workflow, tenant_catalog, "Шаг / результат / ACTIVE + outbox", "SQL transaction", $tags="added")
+Rel(relay, tenant_catalog, "Читает outbox", "SQL", $tags="added")
+Rel(relay, control_topics, "Команды / ConfigPrepared / TenantActivated", "Kafka", $tags="added")
+Rel(control_topics, workflow, "Команды шагов / ACK config_version", "Kafka", $tags="added")
+Rel(workflow, adapters, "Создать или сверить ресурсы", "In-process", $tags="added")
+Rel(adapters, booking_db, "БД / роль домена", "SQL admin", $tags="added")
+Rel(adapters, kafka, "Топики / ACL / квоты", "Admin API", $tags="added")
+Rel(adapters, iam, "Развернуть Keycloak / БД; настроить SSO / роли", "Kubernetes / Admin API", $tags="added")
+Rel(workflow, verify, "Проверить до активации", "In-process", $tags="added")
+Rel(verify, gateway, "Изоляция и readiness", "HTTPS probes", $tags="added")
+Rel(verify, iam, "Проверка входа и ролей", "OIDC", $tags="added")
+Rel(control_topics, gateway, "ConfigPrepared / TenantActivated", "Kafka", $tags="added")
+Rel(gateway, control_topics, "ACK версии", "Kafka", $tags="added")
+Rel(control_topics, iam, "ConfigPrepared / TenantActivated", "Kafka / config agent", $tags="added")
+Rel(iam, control_topics, "ACK готовности / версии", "Kafka / config agent", $tags="added")
+legend bottom
+  Красный — добавления и изменения Task5
+  Синий / серый — элементы предыдущего этапа
+endlegend
+show legend
+@enduml
